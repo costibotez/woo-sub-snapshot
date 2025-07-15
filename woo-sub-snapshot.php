@@ -100,8 +100,8 @@ class Woo_Sub_Snapshot {
     private function get_subscription_counts($month) {
         global $wpdb;
 
-        $start_date = date('Y-m-01 00:00:00', strtotime($month));
-        $end_date = date('Y-m-t 23:59:59', strtotime($month));
+        $start_ts = strtotime(date('Y-m-01 00:00:00', strtotime($month)));
+        $end_ts   = strtotime(date('Y-m-t 23:59:59', strtotime($month)));
 
         $subscription_ids = $wpdb->get_col("
             SELECT ID FROM {$wpdb->posts}
@@ -116,14 +116,22 @@ class Woo_Sub_Snapshot {
             $subscription = wcs_get_subscription($id);
             if (!$subscription) continue;
 
-            $start = $subscription->get_time('start');
-            $next_payment = $subscription->get_time('next_payment');
-            $end = $subscription->get_time('end');
-            $access_end = $next_payment ? $next_payment : $end;
+            $start_time     = $subscription->get_time('start');
+            $next_payment   = $subscription->get_time('next_payment');
+            $end_time       = $subscription->get_time('end');
 
-            if ($access_end && $start <= strtotime($end_date) && $access_end >= strtotime($start_date)) {
-                if ($subscription->has_status('active')) $active++;
-                if ($subscription->has_status('pending-cancel')) $pending_cancel++;
+            $access_end = $next_payment ? $next_payment : $end_time;
+            if (!$access_end) {
+                $access_end = $end_ts; // treat open-ended subscriptions as active for the whole period
+            }
+
+            if ($start_time <= $end_ts && $access_end >= $start_ts) {
+                if ($subscription->has_status('active')) {
+                    $active++;
+                }
+                if ($subscription->has_status('pending-cancel')) {
+                    $pending_cancel++;
+                }
             }
         }
 
