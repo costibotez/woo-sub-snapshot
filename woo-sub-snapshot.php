@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Woo Subscription Snapshot
  * Plugin URI: https://github.com/costibotez/woo-sub-snapshot
- * Description: Provides a monthly snapshot of active WooCommerce subscriptions (including pending cancellations), with CSV export and email.
- * Version: 1.4.0
+ * Description: Provides a monthly snapshot of active WooCommerce subscriptions (including pending cancellations) and CT Club memberships, with CSV export and email.
+ * Version: 1.5.0
  * Author: Costin Botez
  * Author URI: https://nomad-developer.co.uk
 */
@@ -62,11 +62,12 @@ class Woo_Sub_Snapshot {
         submit_button("Export CSV");
         echo '</form>';
 
-        echo '<table class="widefat fixed striped"><thead><tr><th>Month</th><th>Active Subscriptions</th><th>Pending Cancel</th></tr></thead><tbody>';
+        echo '<table class="widefat fixed striped"><thead><tr><th>Month</th><th>Active Subscriptions</th><th>Pending Cancel</th><th>Active CT Club Members</th></tr></thead><tbody>';
         $months = $this->get_month_range($start_filter, $end_filter);
         foreach ($months as $month) {
             $counts = $this->get_subscription_counts($month);
-            echo '<tr><td>' . esc_html($month) . '</td><td>' . esc_html($counts['active']) . '</td><td>' . esc_html($counts['pending_cancel']) . '</td></tr>';
+            $ct_club = $this->get_ct_club_member_count($month);
+            echo '<tr><td>' . esc_html($month) . '</td><td>' . esc_html($counts['active']) . '</td><td>' . esc_html($counts['pending_cancel']) . '</td><td>' . esc_html($ct_club) . '</td></tr>';
         }
         echo '</tbody></table></div>';
     }
@@ -138,6 +139,47 @@ class Woo_Sub_Snapshot {
         return array('active' => $active, 'pending_cancel' => $pending_cancel);
     }
 
+    private function get_ct_club_member_count($month) {
+        global $wpdb;
+
+        $start_ts = strtotime(date('Y-m-01 00:00:00', strtotime($month)));
+        $end_ts   = strtotime(date('Y-m-t 23:59:59', strtotime($month)));
+
+        $memberships = $wpdb->get_results($wpdb->prepare(
+            "SELECT ID, post_author, post_date FROM {$wpdb->posts} WHERE post_type = 'wc_user_membership' AND post_status = 'wcm-active' AND post_parent = %d",
+            13981
+        ));
+
+        $count = 0;
+        foreach ($memberships as $membership) {
+            $start_time = strtotime($membership->post_date);
+            $end_time = $wpdb->get_var($wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s",
+                $membership->ID,
+                '_end_date'
+            ));
+            $end_time = $end_time ? strtotime($end_time) : null;
+
+            if ($start_time > $end_ts) {
+                continue;
+            }
+            if (!is_null($end_time) && $end_time < $start_ts) {
+                continue;
+            }
+
+            $has_sub = $wpdb->get_var($wpdb->prepare(
+                "SELECT s.ID FROM {$wpdb->posts} s JOIN {$wpdb->postmeta} smeta ON smeta.post_id = s.ID WHERE s.post_type = 'shop_subscription' AND s.post_status IN ('wc-active','wc-pending-cancel','wc-on-hold') AND smeta.meta_key = '_user_id' AND smeta.meta_value = %d LIMIT 1",
+                $membership->post_author
+            ));
+
+            if (!$has_sub) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
     public function handle_csv_export() {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Unauthorized');
@@ -149,11 +191,12 @@ class Woo_Sub_Snapshot {
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment;filename=subscription-report.csv');
         $output = fopen('php://output', 'w');
-        fputcsv($output, array('Month', 'Active Subscriptions', 'Pending Cancel'));
+        fputcsv($output, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members'));
 
         foreach ($this->get_month_range($start_date, $end_date) as $month) {
             $counts = $this->get_subscription_counts($month);
-            fputcsv($output, array($month, $counts['active'], $counts['pending_cancel']));
+            $ct_club = $this->get_ct_club_member_count($month);
+            fputcsv($output, array($month, $counts['active'], $counts['pending_cancel'], $ct_club));
         }
 
         fclose($output);
@@ -167,18 +210,19 @@ class Woo_Sub_Snapshot {
         $upload_dir = wp_upload_dir();
         $file = trailingslashit($upload_dir['basedir']) . 'subscription-report.csv';
         $fp = fopen($file, 'w');
-        fputcsv($fp, array('Month', 'Active Subscriptions', 'Pending Cancel'));
+        fputcsv($fp, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members'));
 
         foreach ($this->get_month_range(date('Y-m-01', strtotime('-11 months')), date('Y-m-t')) as $month) {
             $counts = $this->get_subscription_counts($month);
-            fputcsv($fp, array($month, $counts['active'], $counts['pending_cancel']));
+            $ct_club = $this->get_ct_club_member_count($month);
+            fputcsv($fp, array($month, $counts['active'], $counts['pending_cancel'], $ct_club));
         }
         fclose($fp);
 
         $subject = 'Monthly Active Subscriptions Report';
         $body = 'Hi,
 
-Attached is your monthly report showing active and pending-cancel WooCommerce subscriptions.
+Attached is your monthly report showing active and pending-cancel WooCommerce subscriptions along with Active CT Club members.
 
 Best,
 Costin (Automated email)';
