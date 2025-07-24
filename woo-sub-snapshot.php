@@ -3,7 +3,7 @@
  * Plugin Name: Woo Subscription Snapshot
  * Plugin URI: https://github.com/costibotez/woo-sub-snapshot
  * Description: Provides a monthly snapshot of active WooCommerce subscriptions (including pending cancellations) and CT Club memberships, with CSV export and email.
- * Version: 1.5.0
+ * Version: 1.6.2
  * Author: Costin Botez
  * Author URI: https://nomad-developer.co.uk
 */
@@ -62,12 +62,12 @@ class Woo_Sub_Snapshot {
         submit_button("Export CSV");
         echo '</form>';
 
-        echo '<table class="widefat fixed striped"><thead><tr><th>Month</th><th>Active Subscriptions</th><th>Pending Cancel</th><th>Active CT Club Members</th></tr></thead><tbody>';
+        echo '<table class="widefat fixed striped"><thead><tr><th>Month</th><th>Active Subscriptions</th><th>Pending Cancel</th><th>Active CT Club Members</th><th>Total Amount</th><th>New Subs</th><th>Cancellations</th><th>Ended</th></tr></thead><tbody>';
         $months = $this->get_month_range($start_filter, $end_filter);
         foreach ($months as $month) {
-            $counts = $this->get_subscription_counts($month);
+            $stats = $this->get_subscription_stats($month);
             $ct_club = $this->get_ct_club_member_count($month);
-            echo '<tr><td>' . esc_html($month) . '</td><td>' . esc_html($counts['active']) . '</td><td>' . esc_html($counts['pending_cancel']) . '</td><td>' . esc_html($ct_club) . '</td></tr>';
+            echo '<tr><td>' . esc_html($month) . '</td><td>' . esc_html($stats['active']) . '</td><td>' . esc_html($stats['pending_cancel']) . '</td><td>' . esc_html($ct_club) . '</td><td>' . esc_html(number_format($stats['subscription_total'], 2)) . '</td><td>' . esc_html($stats['new_subscriptions']) . '</td><td>' . esc_html($stats['cancellations']) . '</td><td>' . esc_html($stats['ended']) . '</td></tr>';
         }
         echo '</tbody></table></div>';
     }
@@ -177,7 +177,80 @@ class Woo_Sub_Snapshot {
             }
         }
 
+
         return $count;
+    }
+
+    private function get_subscription_stats($month) {
+        global $wpdb;
+
+        $start_ts = strtotime(date('Y-m-01 00:00:00', strtotime($month)));
+        $end_ts   = strtotime(date('Y-m-t 23:59:59', strtotime($month)));
+
+        $subscription_ids = $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'shop_subscription'");
+
+        $stats = array(
+            'active'            => 0,
+            'pending_cancel'    => 0,
+            'new_subscriptions' => 0,
+            'cancellations'     => 0,
+            'ended'             => 0,
+            'subscription_total'=> 0,
+        );
+
+        foreach ($subscription_ids as $id) {
+            $subscription = wcs_get_subscription($id);
+            if (!$subscription) continue;
+
+            $start_time     = $subscription->get_time('start');
+            $next_payment   = $subscription->get_time('next_payment');
+            $end_time       = $subscription->get_time('end');
+            $cancel_time    = $subscription->get_time('cancelled');
+
+            $access_end = $next_payment ? $next_payment : $end_time;
+            if (!$access_end) {
+                $access_end = $end_ts;
+            }
+
+            if ($start_time <= $end_ts && $access_end >= $start_ts) {
+                if ($subscription->has_status('active')) {
+                    $stats['active']++;
+                }
+                if ($subscription->has_status('pending-cancel')) {
+                    $stats['pending_cancel']++;
+                }
+            }
+
+            if ($start_time >= $start_ts && $start_time <= $end_ts) {
+                $stats['new_subscriptions']++;
+                $parent_order = $subscription->get_parent();
+                if ($parent_order && is_object($parent_order)) {
+                    $stats['subscription_total'] += floatval($parent_order->get_total());
+                }
+            }
+
+            if ($cancel_time && $cancel_time >= $start_ts && $cancel_time <= $end_ts) {
+                $stats['cancellations']++;
+            }
+
+            if ($end_time && $end_time >= $start_ts && $end_time <= $end_ts) {
+                $stats['ended']++;
+            }
+
+            $renewal_orders = $subscription->get_related_orders('renewal');
+            if (!empty($renewal_orders)) {
+                foreach ($renewal_orders as $order_id) {
+                    $order = wc_get_order($order_id);
+                    if ($order) {
+                        $order_ts = $order->get_date_created() ? $order->get_date_created()->getTimestamp() : 0;
+                        if ($order_ts >= $start_ts && $order_ts <= $end_ts) {
+                            $stats['subscription_total'] += floatval($order->get_total());
+                        }
+                    }
+                }
+            }
+        }
+        return $stats;
     }
 
     public function handle_csv_export() {
@@ -191,12 +264,21 @@ class Woo_Sub_Snapshot {
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment;filename=subscription-report.csv');
         $output = fopen('php://output', 'w');
-        fputcsv($output, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members'));
+        fputcsv($output, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members', 'Total Amount', 'New Subs', 'Cancellations', 'Ended'));
 
         foreach ($this->get_month_range($start_date, $end_date) as $month) {
-            $counts = $this->get_subscription_counts($month);
+            $stats = $this->get_subscription_stats($month);
             $ct_club = $this->get_ct_club_member_count($month);
-            fputcsv($output, array($month, $counts['active'], $counts['pending_cancel'], $ct_club));
+            fputcsv($output, array(
+                $month,
+                $stats['active'],
+                $stats['pending_cancel'],
+                $ct_club,
+                number_format($stats['subscription_total'], 2),
+                $stats['new_subscriptions'],
+                $stats['cancellations'],
+                $stats['ended']
+            ));
         }
 
         fclose($output);
@@ -210,12 +292,21 @@ class Woo_Sub_Snapshot {
         $upload_dir = wp_upload_dir();
         $file = trailingslashit($upload_dir['basedir']) . 'subscription-report.csv';
         $fp = fopen($file, 'w');
-        fputcsv($fp, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members'));
+        fputcsv($fp, array('Month', 'Active Subscriptions', 'Pending Cancel', 'Active CT Club Members', 'Total Amount', 'New Subs', 'Cancellations', 'Ended'));
 
         foreach ($this->get_month_range(date('Y-m-01', strtotime('-11 months')), date('Y-m-t')) as $month) {
-            $counts = $this->get_subscription_counts($month);
+            $stats = $this->get_subscription_stats($month);
             $ct_club = $this->get_ct_club_member_count($month);
-            fputcsv($fp, array($month, $counts['active'], $counts['pending_cancel'], $ct_club));
+            fputcsv($fp, array(
+                $month,
+                $stats['active'],
+                $stats['pending_cancel'],
+                $ct_club,
+                number_format($stats['subscription_total'], 2),
+                $stats['new_subscriptions'],
+                $stats['cancellations'],
+                $stats['ended']
+            ));
         }
         fclose($fp);
 
