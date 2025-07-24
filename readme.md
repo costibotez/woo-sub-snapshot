@@ -4,7 +4,7 @@ A lightweight WordPress plugin that generates monthly reports of WooCommerce Sub
 - Active subscriptions
 - Pending cancellations
 - Custom date filtering
-- CSV export (now includes revenue and event counts)
+- CSV export (includes signup and renewal totals)
 - Automated monthly email with attached report
 
 ## Features
