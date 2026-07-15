@@ -1,20 +1,23 @@
 # Woo Subscription Snapshot
 
-A lightweight WordPress plugin that generates monthly reports of WooCommerce Subscriptions, including:
+A WordPress plugin that reports on WooCommerce Subscriptions, including:
 - Active subscriptions (historically accurate — cancelled/expired subscriptions still count for the months they were active)
 - Pending cancellations
 - Active CT Club members (WooCommerce Memberships plan, configurable)
-- Custom date filtering
-- CSV export
-- Automated monthly email with attached report
+- Growth, churn, and estimated MRR metrics
+- Trend charts, custom date filtering, CSV export
+- Automated weekly/monthly email with attached report
 
 ## Features
 
-- 📊 Admin dashboard report with a clean table view
+- 📊 Admin dashboard with trend charts (inline SVG — no external assets) and a month-over-month detail table
+- 📈 Growth & churn metrics: new subscriptions, cancellations, net change, churn rate %, and estimated MRR
+- 🗄️ Immutable monthly snapshots — closed months are recorded to a custom table so history can't be rewritten by later status changes, and reports render instantly
 - 📅 Start Date / End Date filtering
 - 📁 Export as CSV (nonce-protected, formula-injection safe)
-- ✉️ Automated monthly email (custom `wss_monthly` cron schedule) with HTML summary and CSV attachment
-- ⚙️ Settings for recipient email, CT Club membership plan ID, and whether to exclude members who also hold a live subscription
+- ✉️ Automated email with weekly or monthly cadence, multiple recipients, HTML summary, CSV attachment, and a "send test email now" button
+- 🔌 REST API (`GET /wp-json/wss/v1/report`) and WP-CLI (`wp wss report`) for external dashboards and scripted exports
+- ⚙️ Settings for recipient email(s), cadence, CT Club membership plan ID, and whether to exclude members who also hold a live subscription
 - 🔒 Secure admin-only access (`manage_woocommerce` capability + CSRF nonces on all actions)
 - ⚡ Single-pass queries with a 1-hour report cache — no per-subscription object loading
 
@@ -51,22 +54,36 @@ Found on the **Subscription Reports** admin page:
 3. Go to `Subscription Reports` → set recipient email and CT Club plan ID
 4. Enjoy the reports!
 
+## API
+
+Both are gated behind the `manage_woocommerce` capability.
+
+```
+GET /wp-json/wss/v1/report?start=2026-01-01&end=2026-07-31
+wp wss report --start=2026-01-01 --end=2026-07-31 --format=table|csv|json
+```
+
 ## Structure
 
 ```
 woo-sub-snapshot.php          Bootstrap: hooks, cron interval, HPOS compat, dependency guard
 includes/
-  class-wss-report-data.php   Queries + month bucketing (single source of truth)
-  class-wss-admin-page.php    Menu, settings, report table
+  class-wss-report-data.php   Queries, month bucketing, growth/churn/MRR (single source of truth)
+  class-wss-snapshots.php     Immutable monthly snapshots (custom table + recorder cron)
+  class-wss-chart.php         Inline SVG line-chart renderer
+  class-wss-admin-page.php    Menu, settings, charts, report table
   class-wss-csv-exporter.php  Shared CSV writer + export handler
-  class-wss-email-report.php  Monthly cron email
-uninstall.php                 Removes options, cron event, and cached reports
+  class-wss-email-report.php  Scheduled email (weekly/monthly, multi-recipient, test send)
+  class-wss-api.php           REST endpoint + WP-CLI command
+uninstall.php                 Removes options, cron events, snapshots table, and caches
 ```
 
 ## Notes
 
 - "Pending Cancel" reflects the *current* subscription status, so historical months show subscriptions that are pending cancellation today.
-- Deactivating the plugin clears the scheduled email; uninstalling removes all stored options and caches.
+- MRR is estimated from each subscription's recurring total normalised to a monthly figure (day/week/month/year billing periods supported).
+- Use **Backfill Monthly Snapshots** on the report page to record closed months immediately; thereafter a daily cron records each month once it closes.
+- Deactivating the plugin clears the scheduled events; uninstalling removes all stored options, the snapshots table, and caches.
 
 ## Developer
 

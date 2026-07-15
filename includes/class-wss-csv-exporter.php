@@ -44,6 +44,11 @@ class WSS_CSV_Exporter {
             __('Active Subscriptions', 'woo-sub-snapshot'),
             __('Pending Cancel', 'woo-sub-snapshot'),
             __('Active CT Club Members', 'woo-sub-snapshot'),
+            __('New Subscriptions', 'woo-sub-snapshot'),
+            __('Cancellations', 'woo-sub-snapshot'),
+            __('Net Change', 'woo-sub-snapshot'),
+            __('Churn Rate %', 'woo-sub-snapshot'),
+            __('Estimated MRR', 'woo-sub-snapshot'),
         ));
 
         foreach ($rows as $row) {
@@ -52,6 +57,11 @@ class WSS_CSV_Exporter {
                 self::escape_cell($row['active']),
                 self::escape_cell($row['pending_cancel']),
                 self::escape_cell($row['ct_club']),
+                self::escape_cell($row['new_subs']),
+                self::escape_cell($row['cancellations']),
+                self::escape_cell($row['net_change']),
+                self::escape_cell($row['churn_rate']),
+                self::escape_cell($row['mrr']),
             ));
         }
     }
