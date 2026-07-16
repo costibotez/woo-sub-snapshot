@@ -92,6 +92,6 @@ uninstall.php                 Removes options, cron events, snapshots table, and
 
 ## Developer
 
-Made with ❤️ by [Costin Botez – Nomad Developer](https://nomad-developer.co.uk)
+Made with ❤️ by [Costin Botez – Nomad Developer](https://www.nomad-developer.co.uk)
 
 ---
