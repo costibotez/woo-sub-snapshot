@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Woo Subscription Snapshot
  * Plugin URI: https://github.com/costibotez/woo-sub-snapshot
- * Description: Reports on WooCommerce subscriptions and CT Club memberships with trend charts, churn/MRR metrics, immutable monthly snapshots, CSV export, scheduled email, and a REST/CLI API.
+ * Description: Reports on WooCommerce subscriptions (and, optionally, a WooCommerce Memberships plan) with trend charts, churn/MRR metrics, immutable monthly snapshots, CSV export, scheduled email, and a REST/CLI API.
  * Version: 2.1.0
  * Author: Costin Botez
  * Author URI: https://nomad-developer.co.uk

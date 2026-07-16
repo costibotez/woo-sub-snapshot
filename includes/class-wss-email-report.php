@@ -130,7 +130,11 @@ class WSS_Email_Report {
             'month'          => __('Month', 'woo-sub-snapshot'),
             'active'         => __('Active', 'woo-sub-snapshot'),
             'pending_cancel' => __('Pending Cancel', 'woo-sub-snapshot'),
-            'ct_club'        => __('CT Club', 'woo-sub-snapshot'),
+        );
+        if (WSS_Report_Data::membership_enabled()) {
+            $cols['ct_club'] = WSS_Report_Data::membership_label();
+        }
+        $cols += array(
             'new_subs'       => __('New', 'woo-sub-snapshot'),
             'cancellations'  => __('Cancelled', 'woo-sub-snapshot'),
             'churn_rate'     => __('Churn %', 'woo-sub-snapshot'),
@@ -159,7 +163,7 @@ class WSS_Email_Report {
         $table .= '</tbody></table>';
 
         return '<p>' . esc_html__('Hi,', 'woo-sub-snapshot') . '</p>'
-            . '<p>' . esc_html__('Here is your subscriptions report showing active and pending-cancel WooCommerce subscriptions, CT Club members, growth, churn, and estimated MRR. The full report is attached as CSV.', 'woo-sub-snapshot') . '</p>'
+            . '<p>' . esc_html__('Here is your subscriptions report showing active and pending-cancel WooCommerce subscriptions, growth, churn, and estimated MRR. The full report is attached as CSV.', 'woo-sub-snapshot') . '</p>'
             . $table
             . '<p>' . esc_html__('Best,', 'woo-sub-snapshot') . '<br>' . esc_html(get_bloginfo('name')) . ' ' . esc_html__('(Automated email)', 'woo-sub-snapshot') . '</p>';
     }

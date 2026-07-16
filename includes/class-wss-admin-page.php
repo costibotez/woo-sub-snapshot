@@ -65,13 +65,7 @@ class WSS_Admin_Page {
         echo '<label><input type="radio" name="cadence" value="weekly"' . checked($cadence, 'weekly', false) . '> ' . esc_html__('Weekly', 'woo-sub-snapshot') . '</label>';
         echo '</td></tr>';
 
-        echo '<tr><th scope="row"><label for="ct_plan_id">' . esc_html__('CT Club Membership Plan ID', 'woo-sub-snapshot') . '</label></th>';
-        echo '<td><input type="number" id="ct_plan_id" name="ct_plan_id" value="' . esc_attr($plan_id) . '" min="0" class="small-text" />';
-        echo '<p class="description">' . esc_html__('Post ID of the Membership Plan to count. Set to 0 to disable the CT Club column.', 'woo-sub-snapshot') . '</p></td></tr>';
-
-        echo '<tr><th scope="row">' . esc_html__('CT Club Counting', 'woo-sub-snapshot') . '</th>';
-        echo '<td><label><input type="checkbox" name="ct_exclude_subscribers" value="yes"' . checked($exclude, true, false) . ' /> ';
-        echo esc_html__('Exclude members who also hold a live subscription', 'woo-sub-snapshot') . '</label></td></tr>';
+        $this->render_membership_settings($plan_id, $exclude);
 
         echo '</tbody></table>';
         submit_button(__('Save Settings', 'woo-sub-snapshot'));
@@ -82,6 +76,44 @@ class WSS_Admin_Page {
         echo '<a href="' . esc_url($this->action_url('woo_sub_snapshot_test_email', 'woo_sub_snapshot_test_email')) . '" class="button">' . esc_html__('Send Test Email Now', 'woo-sub-snapshot') . '</a> ';
         echo '<a href="' . esc_url($this->action_url('woo_sub_snapshot_backfill', 'woo_sub_snapshot_backfill')) . '" class="button">' . esc_html__('Backfill Monthly Snapshots', 'woo-sub-snapshot') . '</a>';
         echo '</p><hr>';
+    }
+
+    /**
+     * The optional WooCommerce Memberships column. Hidden entirely on sites
+     * without Memberships installed, so the plugin works standalone.
+     */
+    private function render_membership_settings($plan_id, $exclude) {
+        echo '<tr><th scope="row">' . esc_html__('Membership Reporting', 'woo-sub-snapshot') . '</th><td>';
+
+        if (!WSS_Report_Data::memberships_available()) {
+            echo '<p class="description">' . esc_html__('WooCommerce Memberships is not active, so the membership column is disabled. Install and activate it to report on a membership plan.', 'woo-sub-snapshot') . '</p>';
+            echo '</td></tr>';
+            return;
+        }
+
+        $plans = WSS_Report_Data::get_membership_plans();
+        $label = WSS_Report_Data::membership_label();
+
+        echo '<label for="ct_plan_id" class="screen-reader-text">' . esc_html__('Membership plan', 'woo-sub-snapshot') . '</label>';
+        echo '<select id="ct_plan_id" name="ct_plan_id">';
+        echo '<option value="0"' . selected($plan_id, 0, false) . '>' . esc_html__('— Disabled —', 'woo-sub-snapshot') . '</option>';
+        foreach ($plans as $id => $title) {
+            echo '<option value="' . esc_attr($id) . '"' . selected($plan_id, $id, false) . '>' . esc_html($title . ' (#' . $id . ')') . '</option>';
+        }
+        // Preserve a previously-saved plan that no longer resolves to a plan post.
+        if ($plan_id > 0 && !isset($plans[$plan_id])) {
+            echo '<option value="' . esc_attr($plan_id) . '" selected>' . esc_html(sprintf(__('Plan #%d (not found)', 'woo-sub-snapshot'), $plan_id)) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . esc_html__('Membership plan to count in the report. Choose “Disabled” to hide the column.', 'woo-sub-snapshot') . '</p>';
+
+        echo '<p><label for="membership_label">' . esc_html__('Column label:', 'woo-sub-snapshot') . ' </label>';
+        echo '<input type="text" id="membership_label" name="membership_label" value="' . esc_attr($label) . '" class="regular-text" placeholder="' . esc_attr__('Members', 'woo-sub-snapshot') . '" /></p>';
+
+        echo '<p><label><input type="checkbox" name="ct_exclude_subscribers" value="yes"' . checked($exclude, true, false) . ' /> ';
+        echo esc_html__('Exclude members who also hold a live subscription', 'woo-sub-snapshot') . '</label></p>';
+
+        echo '</td></tr>';
     }
 
     /**
@@ -113,12 +145,16 @@ class WSS_Admin_Page {
         }
         $labels = wp_list_pluck($rows, 'month');
 
-        echo '<h2>' . esc_html__('Subscription Trends', 'woo-sub-snapshot') . '</h2>';
-        echo WSS_Chart::render_line($labels, array(
+        $series = array(
             array('label' => __('Active', 'woo-sub-snapshot'),         'color' => '#2271b1', 'data' => wp_list_pluck($rows, 'active')),
             array('label' => __('Pending Cancel', 'woo-sub-snapshot'), 'color' => '#d63638', 'data' => wp_list_pluck($rows, 'pending_cancel')),
-            array('label' => __('CT Club', 'woo-sub-snapshot'),        'color' => '#00a32a', 'data' => wp_list_pluck($rows, 'ct_club')),
-        ), array('title' => __('Subscription Trends', 'woo-sub-snapshot')));
+        );
+        if (WSS_Report_Data::membership_enabled()) {
+            $series[] = array('label' => WSS_Report_Data::membership_label(), 'color' => '#00a32a', 'data' => wp_list_pluck($rows, 'ct_club'));
+        }
+
+        echo '<h2>' . esc_html__('Subscription Trends', 'woo-sub-snapshot') . '</h2>';
+        echo WSS_Chart::render_line($labels, $series, array('title' => __('Subscription Trends', 'woo-sub-snapshot')));
 
         echo '<h2>' . esc_html__('Estimated MRR', 'woo-sub-snapshot') . '</h2>';
         echo WSS_Chart::render_line($labels, array(
@@ -127,19 +163,27 @@ class WSS_Admin_Page {
     }
 
     private function render_table($rows) {
-        echo '<h2>' . esc_html__('Monthly Detail', 'woo-sub-snapshot') . '</h2>';
-        echo '<table class="widefat fixed striped"><thead><tr>';
-        foreach (array(
+        $show_members = WSS_Report_Data::membership_enabled();
+
+        $headings = array(
             __('Month', 'woo-sub-snapshot'),
             __('Active', 'woo-sub-snapshot'),
             __('Pending Cancel', 'woo-sub-snapshot'),
-            __('CT Club', 'woo-sub-snapshot'),
+        );
+        if ($show_members) {
+            $headings[] = WSS_Report_Data::membership_label();
+        }
+        $headings = array_merge($headings, array(
             __('New', 'woo-sub-snapshot'),
             __('Cancelled', 'woo-sub-snapshot'),
             __('Net', 'woo-sub-snapshot'),
             __('Churn %', 'woo-sub-snapshot'),
             __('Est. MRR', 'woo-sub-snapshot'),
-        ) as $heading) {
+        ));
+
+        echo '<h2>' . esc_html__('Monthly Detail', 'woo-sub-snapshot') . '</h2>';
+        echo '<table class="widefat fixed striped"><thead><tr>';
+        foreach ($headings as $heading) {
             echo '<th>' . esc_html($heading) . '</th>';
         }
         echo '</tr></thead><tbody>';
@@ -150,7 +194,9 @@ class WSS_Admin_Page {
             echo '<td>' . esc_html($row['month']) . '</td>';
             echo '<td>' . esc_html($row['active']) . ' ' . $this->delta($prev_active, $row['active']) . '</td>';
             echo '<td>' . esc_html($row['pending_cancel']) . '</td>';
-            echo '<td>' . esc_html($row['ct_club']) . '</td>';
+            if ($show_members) {
+                echo '<td>' . esc_html($row['ct_club']) . '</td>';
+            }
             echo '<td>' . esc_html($row['new_subs']) . '</td>';
             echo '<td>' . esc_html($row['cancellations']) . '</td>';
             echo '<td>' . $this->net($row['net_change']) . '</td>';
@@ -211,6 +257,10 @@ class WSS_Admin_Page {
         $plan_id = isset($_POST['ct_plan_id']) ? absint($_POST['ct_plan_id']) : 0;
         update_option('woo_sub_snapshot_ct_plan_id', $plan_id);
         update_option('woo_sub_snapshot_ct_exclude_subscribers', isset($_POST['ct_exclude_subscribers']) ? 'yes' : 'no');
+
+        if (isset($_POST['membership_label'])) {
+            update_option('woo_sub_snapshot_membership_label', sanitize_text_field(wp_unslash($_POST['membership_label'])));
+        }
 
         $cadence     = isset($_POST['cadence']) && 'weekly' === $_POST['cadence'] ? 'weekly' : 'monthly';
         $old_cadence = WSS_Email_Report::get_cadence();

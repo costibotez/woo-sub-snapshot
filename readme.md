@@ -3,10 +3,12 @@
 A WordPress plugin that reports on WooCommerce Subscriptions, including:
 - Active subscriptions (historically accurate — cancelled/expired subscriptions still count for the months they were active)
 - Pending cancellations
-- Active CT Club members (WooCommerce Memberships plan, configurable)
 - Growth, churn, and estimated MRR metrics
 - Trend charts, custom date filtering, CSV export
 - Automated weekly/monthly email with attached report
+- An optional membership column for any WooCommerce Memberships plan (disabled by default)
+
+Works on any WooCommerce Subscriptions store out of the box. WooCommerce Memberships is optional — if it isn't installed, the membership column is simply hidden.
 
 ## Features
 
@@ -17,7 +19,7 @@ A WordPress plugin that reports on WooCommerce Subscriptions, including:
 - 📁 Export as CSV (nonce-protected, formula-injection safe)
 - ✉️ Automated email with weekly or monthly cadence, multiple recipients, HTML summary, CSV attachment, and a "send test email now" button
 - 🔌 REST API (`GET /wp-json/wss/v1/report`) and WP-CLI (`wp wss report`) for external dashboards and scripted exports
-- ⚙️ Settings for recipient email(s), cadence, CT Club membership plan ID, and whether to exclude members who also hold a live subscription
+- ⚙️ Settings for recipient email(s), cadence, and an optional membership plan (chosen from a dropdown, with a custom column label) plus whether to exclude members who also hold a live subscription
 - 🔒 Secure admin-only access (`manage_woocommerce` capability + CSRF nonces on all actions)
 - ⚡ Single-pass queries with a 1-hour report cache — no per-subscription object loading
 
@@ -25,7 +27,7 @@ A WordPress plugin that reports on WooCommerce Subscriptions, including:
 
 1. Installs as a standard plugin in WordPress.
 2. Adds a "Subscription Reports" section in the WP admin.
-3. Automatically emails a CSV file on the 1st of each month to the configured recipient.
+3. Automatically emails a CSV report on the configured cadence to the recipient(s).
 4. Counts subscriptions by their activity window (start date → next payment / end date), so past months reflect what was actually active then.
 5. The report CSV attachment is generated in the system temp directory and deleted after sending — nothing is left in the public uploads folder.
 
@@ -35,15 +37,17 @@ Found on the **Subscription Reports** admin page:
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| Report Recipient Email | — | Where the monthly report is sent |
-| CT Club Membership Plan ID | `13981` | Post ID of the Membership Plan to count; `0` disables the column |
-| Exclude members with a live subscription | On | Don't double-count subscribers as CT Club members |
+| Report Recipient Email(s) | — | Where the report is sent (comma-separated for multiple) |
+| Email Cadence | Monthly | Weekly or monthly |
+| Membership plan | Disabled | Optional WooCommerce Memberships plan to count; only shown when Memberships is active |
+| Column label | `Members` | Display name for the membership column |
+| Exclude members with a live subscription | On | Don't double-count subscribers in the membership column |
 
 ## Requirements
 
 - WordPress 5.8+, PHP 7.2+
-- WooCommerce Subscriptions (active)
-- WooCommerce Memberships (only for the CT Club column)
+- WooCommerce Subscriptions (active) — required
+- WooCommerce Memberships — optional, only for the membership column
 - WP Cron enabled
 - Mail configuration (e.g. via SMTP)
 
@@ -51,8 +55,9 @@ Found on the **Subscription Reports** admin page:
 
 1. Upload the plugin folder to `/wp-content/plugins/`
 2. Activate the plugin from the WordPress admin
-3. Go to `Subscription Reports` → set recipient email and CT Club plan ID
-4. Enjoy the reports!
+3. Go to `Subscription Reports` → set recipient email(s) and cadence
+4. (Optional) If you use WooCommerce Memberships, pick a plan and label for the membership column
+5. Enjoy the reports!
 
 ## API
 

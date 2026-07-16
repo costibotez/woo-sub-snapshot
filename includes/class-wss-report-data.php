@@ -13,11 +13,57 @@ class WSS_Report_Data {
     const DAYS_PER_MONTH = 30.436875;
 
     public static function get_plan_id() {
-        return (int) get_option('woo_sub_snapshot_ct_plan_id', 13981);
+        return (int) get_option('woo_sub_snapshot_ct_plan_id', 0);
     }
 
     public static function exclude_subscribers() {
         return 'yes' === get_option('woo_sub_snapshot_ct_exclude_subscribers', 'yes');
+    }
+
+    /**
+     * Whether WooCommerce Memberships (the source of the membership column)
+     * is installed and active on this site.
+     */
+    public static function memberships_available() {
+        return post_type_exists('wc_user_membership') || function_exists('wc_memberships') || class_exists('WC_Memberships_Loader');
+    }
+
+    /**
+     * Whether the optional membership column should be reported at all:
+     * Memberships must be active and a plan must be selected.
+     */
+    public static function membership_enabled() {
+        return self::memberships_available() && self::get_plan_id() > 0;
+    }
+
+    /**
+     * The site-specific display label for the membership column.
+     */
+    public static function membership_label() {
+        $label = trim((string) get_option('woo_sub_snapshot_membership_label', ''));
+        return '' !== $label ? $label : __('Members', 'woo-sub-snapshot');
+    }
+
+    /**
+     * Available membership plans as id => title, for the settings dropdown.
+     */
+    public static function get_membership_plans() {
+        if (!self::memberships_available()) {
+            return array();
+        }
+        $plans = get_posts(array(
+            'post_type'      => 'wc_membership_plan',
+            'post_status'    => 'publish',
+            'numberposts'    => -1,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+            'suppress_filters' => false,
+        ));
+        $options = array();
+        foreach ($plans as $plan) {
+            $options[(int) $plan->ID] = $plan->post_title;
+        }
+        return $options;
     }
 
     /**
@@ -91,7 +137,7 @@ class WSS_Report_Data {
 
         $months           = self::get_month_range($start_date, $end_date);
         $subscriptions    = self::get_subscriptions();
-        $memberships      = $plan_id ? self::get_memberships($plan_id) : array();
+        $memberships      = self::membership_enabled() ? self::get_memberships($plan_id) : array();
         $subscribed_users = ($exclude && $memberships) ? self::get_subscribed_user_ids() : array();
 
         $rows = array();

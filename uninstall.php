@@ -8,6 +8,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) exit;
 delete_option('woo_sub_snapshot_email');
 delete_option('woo_sub_snapshot_ct_plan_id');
 delete_option('woo_sub_snapshot_ct_exclude_subscribers');
+delete_option('woo_sub_snapshot_membership_label');
 delete_option('woo_sub_snapshot_cadence');
 delete_option('woo_sub_snapshot_db_version');
 

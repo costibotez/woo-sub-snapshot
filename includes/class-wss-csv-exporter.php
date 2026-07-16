@@ -39,30 +39,42 @@ class WSS_CSV_Exporter {
     }
 
     public static function write_rows($handle, $rows) {
-        fputcsv($handle, array(
+        $show_members = WSS_Report_Data::membership_enabled();
+
+        $header = array(
             __('Month', 'woo-sub-snapshot'),
             __('Active Subscriptions', 'woo-sub-snapshot'),
             __('Pending Cancel', 'woo-sub-snapshot'),
-            __('Active CT Club Members', 'woo-sub-snapshot'),
+        );
+        if ($show_members) {
+            $header[] = sprintf(__('Active %s', 'woo-sub-snapshot'), WSS_Report_Data::membership_label());
+        }
+        $header = array_merge($header, array(
             __('New Subscriptions', 'woo-sub-snapshot'),
             __('Cancellations', 'woo-sub-snapshot'),
             __('Net Change', 'woo-sub-snapshot'),
             __('Churn Rate %', 'woo-sub-snapshot'),
             __('Estimated MRR', 'woo-sub-snapshot'),
         ));
+        fputcsv($handle, array_map(array(__CLASS__, 'escape_cell'), $header));
 
         foreach ($rows as $row) {
-            fputcsv($handle, array(
-                self::escape_cell($row['month']),
-                self::escape_cell($row['active']),
-                self::escape_cell($row['pending_cancel']),
-                self::escape_cell($row['ct_club']),
-                self::escape_cell($row['new_subs']),
-                self::escape_cell($row['cancellations']),
-                self::escape_cell($row['net_change']),
-                self::escape_cell($row['churn_rate']),
-                self::escape_cell($row['mrr']),
+            $line = array(
+                $row['month'],
+                $row['active'],
+                $row['pending_cancel'],
+            );
+            if ($show_members) {
+                $line[] = $row['ct_club'];
+            }
+            $line = array_merge($line, array(
+                $row['new_subs'],
+                $row['cancellations'],
+                $row['net_change'],
+                $row['churn_rate'],
+                $row['mrr'],
             ));
+            fputcsv($handle, array_map(array(__CLASS__, 'escape_cell'), $line));
         }
     }
 
@@ -70,7 +82,7 @@ class WSS_CSV_Exporter {
      * Guard against spreadsheet formula injection for any cell that could
      * ever carry user-influenced text.
      */
-    private static function escape_cell($value) {
+    public static function escape_cell($value) {
         $value = (string) $value;
         if (preg_match('/^[=+\-@\t\r]/', $value)) {
             $value = "'" . $value;
